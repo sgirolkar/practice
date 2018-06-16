@@ -1,3 +1,5 @@
+import random
+
 
 def quick_sort(l, start, end):
     if start < end:
@@ -7,20 +9,24 @@ def quick_sort(l, start, end):
 
 
 def partition(l, start, end):
+    pivot_ind = random.randrange(start, end)
+    swap(l, pivot_ind, end)
     pivot = l[end]
     p_ind = start
 
     for i in range(start, end):
         if l[i] <= pivot:
-            tmp = l[i]
-            l[i] = l[p_ind]
-            l[p_ind] = tmp
+            swap(l, i, p_ind)
             p_ind += 1
-    tmp = l[p_ind]
-    l[p_ind] = l[end]
-    l[end] = tmp
+    swap(l, p_ind, end)
 
     return p_ind
+
+
+def swap(l, ind1, ind2):
+    tmp = l[ind1]
+    l[ind1] = l[ind2]
+    l[ind2] = tmp
 
 
 ls = [9, 3, 5, 1, 6, 9, 3, 4, 0]

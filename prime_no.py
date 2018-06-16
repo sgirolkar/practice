@@ -13,5 +13,11 @@ def is_prime(num):
     return True
 
 
+is_prime(5)
+is_prime(10)
+is_prime(23)
+is_prime(31)
+is_prime(53)
+
 for i in range(0, 25):
     is_prime(random.randrange(0, 99999999))

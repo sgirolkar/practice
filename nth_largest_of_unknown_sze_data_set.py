@@ -1,8 +1,9 @@
 import random
 
 curr = -1
-data = [random.randint(0, 999) for p in range(0, random.randint(0, 999))]
-print data
+# random.randint(0, 999)
+data = [random.randint(0, 999) for p in range(0, 10)]
+print "Input is \n"+str(data)
 
 
 def get_next():
@@ -21,19 +22,19 @@ def get_nth_largest(n):
     top_n = [j]
     while j is not None:
         if nth_largest is None or j > nth_largest:
-
-            for i in range(0, len(top_n)-1):
-                if j > top_n[i]:
+            for i in range(0, len(top_n)):
+                if len(top_n) < n:
+                    top_n.append(j)
+                elif j > top_n[i]:
                     tmp = top_n[i]
                     top_n[i] = j
-                    top_n[i+1] = tmp
-                elif len(top_n) < n and j not in top_n:
-                    top_n.append(j)
-        if len(top_n) >= n-1:
+                    if i+1 < len(top_n):
+                        top_n[i+1] = tmp
+        if len(top_n) == n:
             nth_largest = top_n[-1]
         j = get_next()
-    print top_n
+    print "\n\nTop N are \n"+str(top_n)
     return nth_largest
 
 
-print get_nth_largest(3)
+print "\n\nNth largest is "+str(get_nth_largest(3))

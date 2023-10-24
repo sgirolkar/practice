@@ -2,6 +2,7 @@ from requests import Request, Session, utils as req_utils
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from shlex import quote
+from requests.exceptions import RequestException
 
 import urllib3
 import logging
@@ -21,20 +22,20 @@ class CustomSession(Session):
         """
         super().__init__()
         max_retries = 4
-        retry_on = frozenset([408, 502, 500, 503, 504, 413, 429])
+        retry_on = frozenset(sorted({408, 502, 500, 503, 504, 413, 429}))
         methods = frozenset(["HEAD", "GET", "POST"])
         backoff = 0.25
         urllib3_version = int(urllib3.__version__.replace(".", ""))
         if urllib3_version > 12510:
             retry_strategy = Retry(connect=max_retries, read=max_retries, status=max_retries,
                                    status_forcelist=retry_on, allowed_methods=methods,
-                                   backoff_factor=backoff, raise_on_status=False,
+                                   backoff_factor=backoff, raise_on_status=True,
                                    raise_on_redirect=False)
         else:
             retry_strategy = Retry(connect=max_retries, read=max_retries, status=max_retries,
                                    status_forcelist=retry_on,
                                    method_whitelist=methods, backoff_factor=backoff,
-                                   raise_on_status=False, raise_on_redirect=False)
+                                   raise_on_status=True, raise_on_redirect=False)
 
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.mount("https://", adapter)
@@ -87,6 +88,11 @@ class CustomSession(Session):
         curl_cmd = " ".join(flat_parts)
         LOG.info(f"Request Curl:\n\n{curl_cmd}")
         return curl_cmd
+    
+    def send(self, request, **kwargs):
+        response = super().send(request, **kwargs)
+        print(f"Attempt {len(response.history) + 1}")
+        return response
 
     def call(self, method, url, **kwargs):
         """
@@ -107,8 +113,8 @@ class CustomSession(Session):
         if "purpose" in kwargs:
             LOG.info(f"Purpose of the request: {kwargs['purpose']}")
 
-        comp = "compressed" in kwargs
-        ver = "verify" in kwargs
+        comp = kwargs.get("compressed", False)
+        ver =  kwargs.get("verify", False)
         req = Request(
             url=url,
             method=method,
@@ -123,33 +129,38 @@ class CustomSession(Session):
         )
         prep = self.prepare_request(req)
         curl_cmd = self.log_curl(req=prep, compressed=comp, verify=ver)
+        response = None
+        try:
+            response = self.send(
+                prep,
+                verify=kwargs.get("verify"),
+                proxies=kwargs.get("proxies"),
+                cert=kwargs.get("cert"),
+                timeout=kwargs.get("timeout"),
+                allow_redirects=kwargs.get("allow_redirects", True),
+                stream=kwargs.get("stream", False),
+            )
 
-        response = self.send(
-            prep,
-            verify=kwargs.get("verify"),
-            proxies=kwargs.get("proxies"),
-            cert=kwargs.get("cert"),
-            timeout=kwargs.get("timeout"),
-            allow_redirects=kwargs.get("allow_redirects", True),
-            stream=kwargs.get("stream", False),
-        )
+            LOG.info(f"\n\nRetry Count: {response.history}\n\n")
 
-        LOG.info("Response Status: " + str(response.status_code))
-        if response.status_code != 200:
-            print("\n\nGot a non 200 response for the following request.\n")
-            print(f"{curl_cmd}\n")
-            print("Response Status: " + str(response.status_code))
-        if response.text:
-            # log.info("Response Time: " + str(response.elapsed.total_seconds()) + " seconds")
-            LOG.info("Response Headers:  " + str(response.headers))
-            LOG.info("Response Body:\n" + response.text.replace("\n", " "))
+            LOG.info("Response Status: " + str(response.status_code))
             if response.status_code != 200:
-                print("Response Headers:  " + str(response.headers))
-                print("Response Body:\n{0}\n\n".format(response.text.replace("\n", " ")))
-        if kwargs.get("is_main_test_call", False):
-            LOG.info("\n\n**************************** "
-                     "END OF THE MAIN API CALL FROM THE TEST "
-                     "****************************\n\n")
+                print("\n\nGot a non 200 response for the following request.\n")
+                print(f"{curl_cmd}\n")
+                print("Response Status: " + str(response.status_code))
+            if response.text:
+                # log.info("Response Time: " + str(response.elapsed.total_seconds()) + " seconds")
+                LOG.info("Response Headers:  " + str(response.headers))
+                LOG.info("Response Body:\n" + response.text.replace("\n", " "))
+                if response.status_code != 200:
+                    print("Response Headers:  " + str(response.headers))
+                    print("Response Body:\n{0}\n\n".format(response.text.replace("\n", " ")))
+            if kwargs.get("is_main_test_call", False):
+                LOG.info("\n\n**************************** "
+                        "END OF THE MAIN API CALL FROM THE TEST "
+                        "****************************\n\n")
+        except RequestException as e:
+            print(e)
 
         return response
 
@@ -180,8 +191,7 @@ class CustomSession(Session):
         """
         return self.call("POST", url, **kwargs)
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
 session = CustomSession()
-resp = session.get('http://example.com/')
-retry_count = len(resp.history)
-print(retry_count)
+response = session.get("https://httpbin.org/status/500", purpose="Test retry policy", verify=True)

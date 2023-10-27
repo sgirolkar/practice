@@ -10,6 +10,14 @@ import logging
 
 LOG = logging.getLogger("root")
 
+class LogRetry(Retry):
+    """Adding extra logs before making a retry request"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.history and not self.is_exhausted():
+            LOG.info(f"Retry Attempt {len(self.history)}")
+
 
 class CustomSession(Session):
     """
@@ -27,15 +35,17 @@ class CustomSession(Session):
         backoff = 0.25
         urllib3_version = int(urllib3.__version__.replace(".", ""))
         if urllib3_version > 12510:
-            retry_strategy = Retry(connect=max_retries, read=max_retries, status=max_retries,
+            # Do not raiseOnStatus here in retry, 
+            # if you do so there will a MaxRetryError which does not have Response object
+            # do nt rais on status - print the response and other details in the call 
+            # and then in the end raise on status
+            retry_strategy = LogRetry(connect=max_retries, read=max_retries, status=max_retries,
                                    status_forcelist=retry_on, allowed_methods=methods,
-                                   backoff_factor=backoff, raise_on_status=True,
-                                   raise_on_redirect=False)
+                                   backoff_factor=backoff)
         else:
-            retry_strategy = Retry(connect=max_retries, read=max_retries, status=max_retries,
+            retry_strategy = LogRetry(connect=max_retries, read=max_retries, status=max_retries,
                                    status_forcelist=retry_on,
-                                   method_whitelist=methods, backoff_factor=backoff,
-                                   raise_on_status=True, raise_on_redirect=False)
+                                   method_whitelist=methods, backoff_factor=backoff)
 
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.mount("https://", adapter)
@@ -159,8 +169,12 @@ class CustomSession(Session):
                 LOG.info("\n\n**************************** "
                         "END OF THE MAIN API CALL FROM THE TEST "
                         "****************************\n\n")
-        except RequestException as e:
-            print(e)
+            # raise exception for error status codes
+            response.raise_for_status()
+        except RequestException as req_ex:
+            print(req_ex)
+            # drop the long stack traces
+            raise req_ex from None
 
         return response
 
